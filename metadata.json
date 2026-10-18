@@ -1,0 +1,6 @@
+{
+  "name": "PT Innodesk — Corporate Website",
+  "description": "Website profil perusahaan PT Innodesk dengan gaya Monochromatic Corporate Minimalism, menyajikan layanan LOT, portofolio proyek, dan formulir konsultasi interaktif.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

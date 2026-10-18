@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    scroll-behavior: smooth;
+    color-scheme: light;
+  }
+
+  body {
+    background-color: #FAFAFA;
+    color: #18181B;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom hairline borders and subtle focus */
+:focus-visible {
+  outline: 2px solid #18181B;
+  outline-offset: 2px;
+}
