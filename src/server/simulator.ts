@@ -67,7 +67,7 @@ class IoTSimulator {
         // Insert measurement
         const result = await db.execute(
           `INSERT INTO measurements (sensor_id, value, recorded_at, received_at)
-           VALUES (?, ?, datetime('now'), datetime('now'))`,
+           VALUES (?, ?, NOW(), NOW())`,
           [sensor.id, value]
         );
 
@@ -84,13 +84,13 @@ class IoTSimulator {
           const existing = await db.queryOne<any>(`
             SELECT id FROM alerts 
             WHERE sensor_id = ? AND status = 'open' 
-              AND triggered_at > datetime('now', '-15 minutes')
+              AND triggered_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)
           `, [sensor.id]);
 
           if (!existing) {
             await db.execute(
               `INSERT INTO alerts (sensor_id, measurement_id, severity, message, status, triggered_at)
-               VALUES (?, ?, ?, ?, 'open', datetime('now'))`,
+               VALUES (?, ?, ?, ?, 'open', NOW())`,
               [sensor.id, result.insertId, severity, msg]
             );
             console.log(`[Alert Triggered] ${msg}`);
@@ -99,7 +99,7 @@ class IoTSimulator {
 
         // Update device last_seen_at
         await db.execute(
-          `UPDATE devices SET last_seen_at = datetime('now') WHERE id = ?`,
+          `UPDATE devices SET last_seen_at = NOW() WHERE id = ?`,
           [sensor.device_id]
         );
       }

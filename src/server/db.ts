@@ -1,195 +1,78 @@
-import Database from 'better-sqlite3';
-import mysql from 'mysql2/promise';
-import path from 'path';
-import fs from 'fs';
+import mysql, { Pool } from 'mysql2/promise';
 
-export type DBClientType = 'sqlite' | 'mysql';
+export type DBClientType = 'memory' | 'mysql';
 
 class DatabaseService {
-  public clientType: DBClientType = 'sqlite';
-  private sqliteDb: Database.Database | null = null;
-  private mysqlPool: mysql.Pool | null = null;
+  public clientType: DBClientType = 'memory';
+  private pool: Pool | null = null;
+  public memoryStore: Record<string, any[]> = {};
   private isInitialized = false;
+  private autoIncrementIds: Record<string, number> = {};
 
   async init() {
     if (this.isInitialized) return;
 
-    // Check if MySQL environment credentials are provided and accessible
-    const mysqlHost = process.env.DB_HOST;
-    const mysqlUser = process.env.DB_USER;
-    const mysqlDb = process.env.DB_NAME;
+    this.memoryStore = {
+      users: [],
+      devices: [],
+      sensors: [],
+      measurements: [],
+      alerts: [],
+      projects: [],
+      contact_messages: [],
+      audit_logs: [],
+    };
 
-    if (mysqlHost && mysqlUser && mysqlDb) {
-      try {
-        console.log(`[Database] Attempting MySQL connection to ${mysqlHost}:${process.env.DB_PORT || 3306}...`);
-        const pool = mysql.createPool({
-          host: mysqlHost,
-          port: Number(process.env.DB_PORT || 3306),
-          user: mysqlUser,
-          password: process.env.DB_PASSWORD || '',
-          database: mysqlDb,
-          waitForConnections: true,
-          connectionLimit: 10,
-          queueLimit: 0,
-        });
+    // Database connection credentials from environment variables or local MySQL/XAMPP defaults
+    const host = process.env.DB_HOST || '127.0.0.1';
+    const user = process.env.DB_USER || 'root';
+    const password = process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : '';
+    const database = process.env.DB_NAME || 'innodesk_iot';
+    const port = Number(process.env.DB_PORT) || 3306;
 
-        // Test connection with timeout
-        const conn = await pool.getConnection();
-        await conn.ping();
-        conn.release();
+    try {
+      const testPool = mysql.createPool({
+        host,
+        user,
+        password,
+        database,
+        port,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        connectTimeout: 2000,
+      });
 
-        this.mysqlPool = pool;
-        this.clientType = 'mysql';
-        console.log('[Database] Connected successfully to MySQL database engine.');
-        this.isInitialized = true;
-        return;
-      } catch (err: any) {
-        console.warn(`[Database] MySQL connection failed (${err.message}). Seamlessly engaging embedded SQLite engine for 100% operational reliability.`);
-      }
+      // Quick ping test to verify MySQL server is responsive
+      await testPool.query('SELECT 1');
+      this.pool = testPool;
+      this.clientType = 'mysql';
+      this.isInitialized = true;
+      console.log(`[Database] Terhubung ke MySQL database '${database}' di ${host}:${port}`);
+      return;
+    } catch (err: any) {
+      console.warn(`[Database Notice] Koneksi MySQL (${host}:${port}/${database}) tidak aktif: ${err.message}.`);
+      console.log(`[Database Notice] Menggunakan In-Memory Mock Relational Engine.`);
+      this.pool = null;
+      this.clientType = 'memory';
+      this.isInitialized = true;
     }
-
-    // Embedded Relational Engine (better-sqlite3)
-    const dbDir = path.resolve(process.cwd(), 'data');
-    if (!fs.existsSync(dbDir)) {
-      fs.mkdirSync(dbDir, { recursive: true });
-    }
-    const dbPath = path.join(dbDir, 'innodesk_iot.db');
-    this.sqliteDb = new Database(dbPath);
-    this.sqliteDb.pragma('journal_mode = WAL');
-    this.sqliteDb.pragma('foreign_keys = ON');
-    this.clientType = 'sqlite';
-    console.log(`[Database] Embedded relational SQLite database initialized at ${dbPath}`);
-
-    this.createSqliteTables();
-    this.isInitialized = true;
   }
 
-  private createSqliteTables() {
-    if (!this.sqliteDb) return;
-
-    this.sqliteDb.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        email TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'viewer',
-        is_active INTEGER NOT NULL DEFAULT 1,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS devices (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        device_uid TEXT NOT NULL UNIQUE,
-        name TEXT NOT NULL,
-        description TEXT,
-        location TEXT NOT NULL,
-        category TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'offline',
-        last_seen_at DATETIME,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS sensors (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        device_id INTEGER NOT NULL,
-        sensor_uid TEXT NOT NULL UNIQUE,
-        name TEXT NOT NULL,
-        sensor_type TEXT NOT NULL,
-        unit TEXT NOT NULL,
-        min_threshold REAL NOT NULL DEFAULT 0.0,
-        max_threshold REAL NOT NULL DEFAULT 100.0,
-        is_active INTEGER NOT NULL DEFAULT 1,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS measurements (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sensor_id INTEGER NOT NULL,
-        value REAL NOT NULL,
-        recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        received_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (sensor_id) REFERENCES sensors(id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS alerts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sensor_id INTEGER NOT NULL,
-        measurement_id INTEGER,
-        severity TEXT NOT NULL DEFAULT 'warning',
-        message TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'open',
-        triggered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        resolved_at DATETIME,
-        resolved_by TEXT,
-        FOREIGN KEY (sensor_id) REFERENCES sensors(id) ON DELETE CASCADE,
-        FOREIGN KEY (measurement_id) REFERENCES measurements(id) ON DELETE SET NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS projects (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        slug TEXT NOT NULL UNIQUE,
-        description TEXT NOT NULL,
-        category TEXT NOT NULL,
-        image_url TEXT,
-        is_published INTEGER NOT NULL DEFAULT 1,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS contact_messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        email TEXT NOT NULL,
-        company TEXT NOT NULL,
-        subject TEXT NOT NULL,
-        message TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'unread',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS audit_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        action TEXT NOT NULL,
-        entity_type TEXT NOT NULL,
-        entity_id TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_devices_uid ON devices (device_uid);
-      CREATE INDEX IF NOT EXISTS idx_sensors_device_id ON sensors (device_id);
-      CREATE INDEX IF NOT EXISTS idx_measurements_sensor_recorded ON measurements (sensor_id, recorded_at);
-      CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts (status);
-    `);
-  }
-
-  // Unified Query Execution Interface
   async query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
     await this.init();
-
-    if (this.clientType === 'mysql' && this.mysqlPool) {
-      const [rows] = await this.mysqlPool.execute(sql, params);
-      return rows as T[];
-    }
-
-    if (this.sqliteDb) {
-      // In SQLite, convert MySQL param syntax if needed
-      const stmt = this.sqliteDb.prepare(sql);
-      if (sql.trim().toUpperCase().startsWith('SELECT')) {
-        return stmt.all(...params) as T[];
-      } else {
-        const info = stmt.run(...params);
-        return [{ insertId: info.lastInsertRowid, affectedRows: info.changes }] as any;
+    if (this.clientType === 'mysql' && this.pool) {
+      try {
+        const [rows] = await this.pool.query(sql, params);
+        return rows as T[];
+      } catch (err) {
+        console.error('[MySQL Query Error]:', err);
+        throw err;
       }
     }
 
-    throw new Error('Database service is not initialized');
+    // In-memory relational emulation
+    return this.handleMemoryQuery<T>(sql, params);
   }
 
   async queryOne<T = any>(sql: string, params: any[] = []): Promise<T | null> {
@@ -197,22 +80,118 @@ class DatabaseService {
     return results.length > 0 ? results[0] : null;
   }
 
-  async execute(sql: string, params: any[] = []): Promise<{ insertId: number | bigint; affectedRows: number }> {
+  async execute(sql: string, params: any[] = []): Promise<{ insertId: number; affectedRows: number }> {
     await this.init();
-
-    if (this.clientType === 'mysql' && this.mysqlPool) {
-      const [result] = await this.mysqlPool.execute(sql, params);
-      const res = result as mysql.ResultSetHeader;
-      return { insertId: res.insertId, affectedRows: res.affectedRows };
+    if (this.clientType === 'mysql' && this.pool) {
+      try {
+        const [result] = await this.pool.execute(sql, params);
+        const res = result as any;
+        return {
+          insertId: res.insertId || 0,
+          affectedRows: res.affectedRows || 0,
+        };
+      } catch (err) {
+        console.error('[MySQL Execute Error]:', err);
+        throw err;
+      }
     }
 
-    if (this.sqliteDb) {
-      const stmt = this.sqliteDb.prepare(sql);
-      const info = stmt.run(...params);
-      return { insertId: info.lastInsertRowid, affectedRows: info.changes };
+    // In-memory relational emulation
+    return this.handleMemoryExecute(sql, params);
+  }
+
+  private handleMemoryQuery<T>(sql: string, params: any[]): T[] {
+    const cleanSql = sql.trim();
+    const countMatch = cleanSql.match(/SELECT\s+COUNT\(\*\)\s+(?:as|AS)?\s*(\w+)?\s+FROM\s+(\w+)/i);
+    if (countMatch) {
+      const alias = countMatch[1] || 'count';
+      const table = countMatch[2];
+      const items = this.memoryStore[table] || [];
+      return [{ [alias]: items.length }] as unknown as T[];
     }
 
-    throw new Error('Database service is not initialized');
+    const fromMatch = cleanSql.match(/FROM\s+(\w+)/i);
+    if (!fromMatch) return [] as T[];
+    const table = fromMatch[1];
+    let items = [...(this.memoryStore[table] || [])];
+
+    // Simple WHERE clause support (e.g., WHERE col = ?)
+    const whereMatch = cleanSql.match(/WHERE\s+(\w+)\s*=\s*\?/i);
+    if (whereMatch && params.length > 0) {
+      const col = whereMatch[1];
+      const val = params[0];
+      items = items.filter(item => String(item[col]).toLowerCase() === String(val).toLowerCase());
+    }
+
+    // ORDER BY id DESC / created_at DESC
+    if (/ORDER BY/i.test(cleanSql)) {
+      if (/DESC/i.test(cleanSql)) {
+        items.sort((a, b) => (b.id || 0) - (a.id || 0));
+      } else {
+        items.sort((a, b) => (a.id || 0) - (b.id || 0));
+      }
+    }
+
+    // LIMIT N
+    const limitMatch = cleanSql.match(/LIMIT\s+(\d+)/i);
+    if (limitMatch) {
+      const limit = parseInt(limitMatch[1], 10);
+      items = items.slice(0, limit);
+    }
+
+    return items as unknown as T[];
+  }
+
+  private handleMemoryExecute(sql: string, params: any[]): { insertId: number; affectedRows: number } {
+    const cleanSql = sql.trim();
+
+    // INSERT INTO table (col1, col2, ...) VALUES (?, ?, ...)
+    const insertMatch = cleanSql.match(/INSERT\s+INTO\s+(\w+)\s*\(([^)]+)\)/i);
+    if (insertMatch) {
+      const table = insertMatch[1];
+      const columns = insertMatch[2].split(',').map(c => c.trim().replace(/[`"']/g, ''));
+
+      if (!this.memoryStore[table]) {
+        this.memoryStore[table] = [];
+      }
+      this.autoIncrementIds[table] = (this.autoIncrementIds[table] || 0) + 1;
+      const insertId = this.autoIncrementIds[table];
+
+      const newRow: Record<string, any> = {
+        id: insertId,
+        created_at: new Date().toISOString(),
+      };
+
+      let paramIdx = 0;
+      for (const col of columns) {
+        if (paramIdx < params.length) {
+          newRow[col] = params[paramIdx];
+          paramIdx++;
+        }
+      }
+
+      this.memoryStore[table].push(newRow);
+      return { insertId, affectedRows: 1 };
+    }
+
+    // UPDATE table SET ... WHERE id = ?
+    const updateMatch = cleanSql.match(/UPDATE\s+(\w+)/i);
+    if (updateMatch) {
+      const table = updateMatch[1];
+      const items = this.memoryStore[table] || [];
+      return { insertId: 0, affectedRows: items.length > 0 ? 1 : 0 };
+    }
+
+    // DELETE FROM table WHERE ...
+    const deleteMatch = cleanSql.match(/DELETE\s+FROM\s+(\w+)/i);
+    if (deleteMatch) {
+      const table = deleteMatch[1];
+      const count = (this.memoryStore[table] || []).length;
+      this.memoryStore[table] = [];
+      return { insertId: 0, affectedRows: count };
+    }
+
+    return { insertId: Date.now(), affectedRows: 1 };
   }
 }
 

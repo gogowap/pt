@@ -52,10 +52,10 @@ router.get('/chart', authenticateToken, async (req, res) => {
   try {
     const { sensor_id, range = '24h' } = req.query;
 
-    let timeFilter = "datetime('now', '-24 hours')";
-    if (range === '1h') timeFilter = "datetime('now', '-1 hour')";
-    else if (range === '6h') timeFilter = "datetime('now', '-6 hours')";
-    else if (range === '7d') timeFilter = "datetime('now', '-7 days')";
+    let timeFilter = "DATE_SUB(NOW(), INTERVAL 24 HOUR)";
+    if (range === '1h') timeFilter = "DATE_SUB(NOW(), INTERVAL 1 HOUR)";
+    else if (range === '6h') timeFilter = "DATE_SUB(NOW(), INTERVAL 6 HOUR)";
+    else if (range === '7d') timeFilter = "DATE_SUB(NOW(), INTERVAL 7 DAY)";
 
     let sql = `
       SELECT m.id, m.sensor_id, m.value, m.recorded_at, s.name as sensor_name, s.unit,

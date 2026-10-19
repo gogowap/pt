@@ -6,7 +6,7 @@ export async function seedDatabase() {
 
   // Check if users already seeded
   const existingUsers = await db.query('SELECT COUNT(*) as count FROM users');
-  const count = (existingUsers[0] as any).count || 0;
+  const count = (existingUsers && existingUsers[0] ? (existingUsers[0] as any).count : 0) || 0;
   if (count > 0) {
     console.log('[Seed] Database already initialized with existing data.');
     return;
@@ -36,7 +36,7 @@ export async function seedDatabase() {
   // 2. Seed IoT Devices
   const dev1 = await db.execute(
     `INSERT INTO devices (device_uid, name, description, location, category, status, last_seen_at) 
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+     VALUES (?, ?, ?, ?, ?, ?, NOW())`,
     [
       'DEV-JKT-HQ-01',
       'Industrial IoT Gateway HQ',
@@ -49,7 +49,7 @@ export async function seedDatabase() {
 
   const dev2 = await db.execute(
     `INSERT INTO devices (device_uid, name, description, location, category, status, last_seen_at) 
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+     VALUES (?, ?, ?, ?, ?, ?, NOW())`,
     [
       'DEV-CKR-WH-02',
       'Warehouse Ambient & Environmental Node',
@@ -62,7 +62,7 @@ export async function seedDatabase() {
 
   const dev3 = await db.execute(
     `INSERT INTO devices (device_uid, name, description, location, category, status, last_seen_at) 
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+     VALUES (?, ?, ?, ?, ?, ?, NOW())`,
     [
       'DEV-SBY-FL-03',
       'Machinery Vibration & Telemetry Node',
@@ -75,7 +75,7 @@ export async function seedDatabase() {
 
   const dev4 = await db.execute(
     `INSERT INTO devices (device_uid, name, description, location, category, status, last_seen_at) 
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now', '-2 hours'))`,
+     VALUES (?, ?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL 2 HOUR))`,
     [
       'DEV-SMG-CS-04',
       'Cold Storage Temperature Sentinel',
@@ -148,7 +148,7 @@ export async function seedDatabase() {
       const val = Number((s.base + noise).toFixed(2));
       await db.execute(
         `INSERT INTO measurements (sensor_id, value, recorded_at, received_at)
-         VALUES (?, ?, datetime('now', '-${minutesAgo} minutes'), datetime('now', '-${minutesAgo} minutes'))`,
+         VALUES (?, ?, DATE_SUB(NOW(), INTERVAL ${minutesAgo} MINUTE), DATE_SUB(NOW(), INTERVAL ${minutesAgo} MINUTE))`,
         [s.id, val]
       );
     }
@@ -157,19 +157,19 @@ export async function seedDatabase() {
   // 5. Seed Alerts
   await db.execute(
     `INSERT INTO alerts (sensor_id, severity, message, status, triggered_at, resolved_at, resolved_by)
-     VALUES (?, 'critical', 'Warehouse Relative Humidity melewati batas ambang aman (tercatat 68.4% RH)', 'resolved', datetime('now', '-3 hours'), datetime('now', '-1 hour'), 'Bambang Prakoso')`,
+     VALUES (?, 'critical', 'Warehouse Relative Humidity melewati batas ambang aman (tercatat 68.4% RH)', 'resolved', DATE_SUB(NOW(), INTERVAL 3 HOUR), DATE_SUB(NOW(), INTERVAL 1 HOUR), 'Bambang Prakoso')`,
     [s3.insertId]
   );
 
   await db.execute(
     `INSERT INTO alerts (sensor_id, severity, message, status, triggered_at)
-     VALUES (?, 'warning', 'Suhu Server Rack mendekati ambang batas kritis (26.8°C)', 'open', datetime('now', '-18 minutes'))`,
+     VALUES (?, 'warning', 'Suhu Server Rack mendekati ambang batas kritis (26.8°C)', 'open', DATE_SUB(NOW(), INTERVAL 18 MINUTE))`,
     [s1.insertId]
   );
 
   await db.execute(
     `INSERT INTO alerts (sensor_id, severity, message, status, triggered_at)
-     VALUES (?, 'critical', 'Perangkat Cold Storage Sentinel tidak merespons heartbeat telemetri (>90 menit)', 'open', datetime('now', '-45 minutes'))`,
+     VALUES (?, 'critical', 'Perangkat Cold Storage Sentinel tidak merespons heartbeat telemetri (>90 menit)', 'open', DATE_SUB(NOW(), INTERVAL 45 MINUTE))`,
     [s7.insertId]
   );
 
@@ -213,7 +213,7 @@ export async function seedDatabase() {
   // 7. Seed Contact Messages
   await db.execute(
     `INSERT INTO contact_messages (name, email, company, subject, message, status, created_at)
-     VALUES (?, ?, ?, ?, ?, 'unread', datetime('now', '-30 minutes'))`,
+     VALUES (?, ?, ?, ?, ?, 'unread', DATE_SUB(NOW(), INTERVAL 30 MINUTE))`,
     [
       'Ir. Hendra Gunawan',
       'hendra@nusantaramanufacturing.co.id',
@@ -225,7 +225,7 @@ export async function seedDatabase() {
 
   await db.execute(
     `INSERT INTO contact_messages (name, email, company, subject, message, status, created_at)
-     VALUES (?, ?, ?, ?, ?, 'read', datetime('now', '-2 days'))`,
+     VALUES (?, ?, ?, ?, ?, 'read', DATE_SUB(NOW(), INTERVAL 2 DAY))`,
     [
       'Maya Anggraini, S.T.',
       'maya.a@logistikindonesia.com',
@@ -238,7 +238,7 @@ export async function seedDatabase() {
   // 8. Seed Audit Log
   await db.execute(
     `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, created_at)
-     VALUES (1, 'SYSTEM_BOOTSTRAP', 'system', 'INIT_SEED', datetime('now'))`
+     VALUES (1, 'SYSTEM_BOOTSTRAP', 'system', 'INIT_SEED', NOW())`
   );
 
   console.log('[Seed] Database initialization and relational seeding complete!');

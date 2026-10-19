@@ -34,7 +34,7 @@ router.post('/', async (req, res) => {
     // Persist directly into relational database
     const result = await db.execute(
       `INSERT INTO contact_messages (name, email, company, subject, message, status, created_at)
-       VALUES (?, ?, ?, ?, ?, 'unread', datetime('now'))`,
+       VALUES (?, ?, ?, ?, ?, 'unread', NOW())`,
       [name.trim(), email.trim(), company.trim(), subject.trim(), message.trim()]
     );
 

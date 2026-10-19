@@ -56,7 +56,7 @@ router.put('/:id/resolve', authenticateToken, requireRole('admin', 'operator'), 
 
     await db.execute(
       `UPDATE alerts 
-       SET status = 'resolved', resolved_at = datetime('now'), resolved_by = ?
+       SET status = 'resolved', resolved_at = NOW(), resolved_by = ?
        WHERE id = ?`,
       [resolverName, alertId]
     );
